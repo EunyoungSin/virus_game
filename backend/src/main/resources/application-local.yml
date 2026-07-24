@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/checkpoint
+    username: checkpoint
+    password: checkpoint
+    driver-class-name: org.postgresql.Driver
+
+jwt:
+  secret: local-dev-only-secret-do-not-use-in-production-32bytes-min
+  expiration-ms: 604800000

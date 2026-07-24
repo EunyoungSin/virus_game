@@ -1,0 +1,91 @@
+:root {
+  /* 관공서 야간 조명 + 낡은 서류 팔레트 */
+  --void: #0e1210;
+  --paper: #c9c2ab;
+  --ink: #211d18;
+  --quarantine: #4a5d45;
+  --stamp-red: #7a2e28;
+  --flicker: #e8dec4;
+
+  --paper-dark: #b8b096;
+  --ink-soft: rgba(33, 29, 24, 0.65);
+  --void-soft: rgba(14, 18, 16, 0.7);
+
+  --font-stencil: 'Special Elite', 'Courier New', monospace;
+  --font-serif: 'Noto Serif KR', 'Nanum Myeongjo', serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+
+  --shadow-doc: 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+html {
+  /* 도장 흔들림, 서류 기울기 등 transform 애니메이션이 뷰포트 경계를 살짝 벗어나면서
+     스크롤바가 깜빡이며 나타나는 것을 막는다. 세로 스크롤은 그대로 허용. */
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--void);
+  background-image: radial-gradient(ellipse at 50% -10%, rgba(232, 222, 196, 0.06), transparent 60%);
+  color: var(--paper);
+  font-family: var(--font-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:focus-visible {
+  outline: 3px solid var(--flicker);
+  outline-offset: 2px;
+}
+
+/* 관공서 서류 제목/버튼용 타자기·스텐실 톤 */
+.label-stencil {
+  font-family: var(--font-stencil);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* 신뢰도, 턴 번호 등 수치 표기용 */
+.label-mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

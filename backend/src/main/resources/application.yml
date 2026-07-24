@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: checkpoint
+  profiles:
+    active: local
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: ${JWT_EXPIRATION_MS:604800000} # 7 days
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+game:
+  days: ${GAME_DAYS:4}
+  visitors-per-day: ${GAME_VISITORS_PER_DAY:3}
+  min-infected: ${GAME_MIN_INFECTED:4}
+  max-infected: ${GAME_MAX_INFECTED:6}
+
+gemini:
+  base-url: https://generativelanguage.googleapis.com/v1beta/models
+  api-key: ${GEMINI_API_KEY:}
+  model: ${GEMINI_MODEL:gemini-flash-latest}
+  fallback-model: ${GEMINI_FALLBACK_MODEL:gemini-flash-lite-latest}
+  max-retries: 3
+  initial-backoff-ms: 500
+  # Gemini 3.x models spend part of maxOutputTokens on invisible "thinking" tokens before
+  # the visible answer; too low a budget here truncates the answer (finishReason=MAX_TOKENS).
+  max-output-tokens: 1024
