@@ -1,11 +1,10 @@
 services:
   - type: web
     name: checkpoint-backend
-    runtime: java
+    runtime: docker
     plan: free
-    rootDir: backend
-    buildCommand: ./gradlew clean bootJar -x test
-    startCommand: java -jar build/libs/checkpoint-0.0.1-SNAPSHOT.jar
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     healthCheckPath: /actuator/health
     envVars:
       - key: JWT_SECRET
