@@ -12,6 +12,7 @@ frontend/*.tsbuildinfo
 # Env
 .env
 *.env.local
+.git-push-token
 
 # IDE
 .idea/
