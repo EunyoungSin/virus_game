@@ -2,9 +2,13 @@ package com.checkpoint.ai.gemini;
 
 import com.checkpoint.ai.AiDialogueClient;
 import com.checkpoint.ai.ChatTurn;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.ClientHttpRequestFactories;
+import org.springframework.boot.web.client.ClientHttpRequestFactorySettings;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
@@ -28,7 +32,15 @@ public class GeminiDialogueClient implements AiDialogueClient {
             @Value("${gemini.max-retries:3}") int maxRetries,
             @Value("${gemini.initial-backoff-ms:500}") long initialBackoffMs,
             @Value("${gemini.max-output-tokens:1024}") int maxOutputTokens) {
-        this.restClient = RestClient.create(baseUrl);
+        // 타임아웃을 명시하지 않으면 JDK 기본 클라이언트는 연결/응답 지연이 있어도 사실상
+        // 무기한 대기한다 — Render처럼 외부 API까지 네트워크 경로가 긴 환경에서 한 번의
+        // 지연이 요청 스레드를 오래 붙잡지 않도록 연결/응답 타임아웃을 명시적으로 둔다.
+        ClientHttpRequestFactorySettings settings =
+                ClientHttpRequestFactorySettings.DEFAULTS
+                        .withConnectTimeout(Duration.ofSeconds(5))
+                        .withReadTimeout(Duration.ofSeconds(30));
+        ClientHttpRequestFactory requestFactory = ClientHttpRequestFactories.get(settings);
+        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
         this.apiKey = apiKey;
         this.primaryModel = primaryModel;
         this.fallbackModel = fallbackModel;

@@ -14,6 +14,7 @@ import FlickeringLight from '../components/FlickeringLight.vue'
 import IntroBriefing from '../components/IntroBriefing.vue'
 import SlotPicker from '../components/SlotPicker.vue'
 import StampOverlay from '../components/StampOverlay.vue'
+import TestKitSlip from '../components/TestKitSlip.vue'
 import type {
   ConfirmModalConfig,
   ConversationTurn,
@@ -59,6 +60,12 @@ const asking = ref(false)
 const deciding = ref(false)
 const usingTestKit = ref(false)
 const testKitResult = ref<TestKitResult | null>(null)
+// 슬립(결과지)이 화면에 떠 있는 동안만 true — 사라진 뒤에도 testKitResult 자체는 남아
+// 방문자 카드에 "검사 완료" 영구 태그를 계속 띄운다(둘을 분리해야 영구 태그가 슬립의
+// 등장/퇴장 타이밍에 종속되지 않는다).
+const showTestKitSlip = ref(false)
+// KIT 카운터가 도장 모션과 무관하게 담백하게 살짝 흔들리는 효과 트리거(값이 바뀔 때마다 재생).
+const kitPulseToken = ref(0)
 const errorMessage = ref('')
 const checkpointMessage = ref('')
 
@@ -160,6 +167,7 @@ async function loadNextVisitor() {
     question.value = ''
     topicTag.value = ''
     testKitResult.value = null
+    showTestKitSlip.value = false
     try {
       conversation.value = await getHistory(gameId, visitor.value.visitorId)
     } catch {
@@ -315,6 +323,8 @@ async function handleUseTestKit() {
     if (summary.value) {
       summary.value = { ...summary.value, testKitsRemaining: testKitResult.value.testKitsRemaining }
     }
+    kitPulseToken.value++
+    showTestKitSlip.value = true
   } catch (error) {
     errorMessage.value =
       axios.isAxiosError(error) && error.response?.status === 409
@@ -323,6 +333,10 @@ async function handleUseTestKit() {
   } finally {
     usingTestKit.value = false
   }
+}
+
+function onTestKitSlipDone() {
+  showTestKitSlip.value = false
 }
 
 // --- 저장: 항상 GLOBAL scope 슬롯 선택 화면을 연다 ---
@@ -487,6 +501,7 @@ async function performLoad(slot: SaveSlot) {
       trustAtDayStart.value = loadedSummary.trustScore
       feedback.value = null
       testKitResult.value = null
+    showTestKitSlip.value = false
       await loadNextVisitor()
     } else {
       router.push({ name: 'game-play', params: { gameId: loadedSummary.gameId } })
@@ -547,7 +562,7 @@ onUnmounted(() => {
         <span>DAY {{ summary.currentDay }}</span>
         <span>TRUST {{ summary.trustScore }}</span>
         <span>PROCESSED {{ summary.totalProcessed }}</span>
-        <span>KIT {{ summary.testKitsRemaining }}</span>
+        <span :key="kitPulseToken" class="kit-pulse">KIT {{ summary.testKitsRemaining }}</span>
       </div>
     </header>
 
@@ -574,8 +589,20 @@ onUnmounted(() => {
     <div v-else-if="visitor" class="desk" :class="{ faint: visitorFaint }" :inert="visitorFaint">
       <article class="dossier" :style="{ transform: `rotate(${dossierTilt}deg)` }">
         <div class="dossier-clip" aria-hidden="true"></div>
+        <TestKitSlip
+          v-if="showTestKitSlip && testKitResult"
+          :infected="testKitResult.infected"
+          @done="onTestKitSlipDone"
+        />
         <h2 class="dossier-name">
           {{ visitor.name }} <span class="label-mono">({{ visitor.age }})</span>
+          <span
+            v-if="testKitResult"
+            class="test-kit-tag label-mono"
+            :class="testKitResult.infected ? 'positive' : 'negative'"
+          >
+            검사 완료: {{ testKitResult.infected ? '양성' : '음성' }}
+          </span>
         </h2>
         <dl class="dossier-fields">
           <div class="field">
@@ -616,7 +643,7 @@ onUnmounted(() => {
         </div>
       </article>
 
-      <form class="ask-form" @submit.prevent="submitQuestion">
+      <form id="askForm" class="ask-form" @submit.prevent="submitQuestion">
         <select v-model="topicTag" aria-label="질문 주제">
           <option value="">주제 선택 (선택)</option>
           <option v-for="(label, tag) in TOPIC_LABELS" :key="tag" :value="tag">{{ label }}</option>
@@ -627,24 +654,20 @@ onUnmounted(() => {
           placeholder="방문자에게 질문을 입력하십시오"
           :disabled="asking"
         ></textarea>
-        <button type="submit" class="label-stencil" :disabled="asking || !question.trim()">
-          {{ asking ? '질문 전달 중...' : '질문하기' }}
-        </button>
       </form>
 
-      <div class="test-kit-row">
+      <div class="action-row">
+        <button type="submit" form="askForm" class="submit-btn label-stencil" :disabled="asking || !question.trim()">
+          {{ asking ? '질문 전달 중...' : '질문하기' }}
+        </button>
         <button
-          class="label-stencil"
+          type="button"
+          class="test-kit-btn label-stencil"
           :disabled="usingTestKit || !!testKitResult || (summary?.testKitsRemaining ?? 0) <= 0"
           @click="handleUseTestKit"
         >
           {{ usingTestKit ? '검사 중...' : '검사키트 사용' }}
         </button>
-        <p v-if="testKitResult" class="test-kit-result label-mono" :class="{ positive: testKitResult.infected }">
-          검사 결과:
-          <span aria-hidden="true">{{ testKitResult.infected ? '⚠' : '✓' }}</span>
-          {{ testKitResult.infected ? '감염 확정 (POSITIVE)' : '비감염 확정 (NEGATIVE)' }}
-        </p>
       </div>
 
       <div class="decision-buttons">
@@ -743,6 +766,25 @@ onUnmounted(() => {
   gap: 1rem;
   font-size: 0.85rem;
   color: var(--flicker);
+}
+
+/* 검사키트 사용으로 자원이 줄었을 때 담백하게 살짝 흔들리는 정도만 — 판정 도장의
+   임팩트/화면 흔들림과는 전혀 다른, 훨씬 절제된 반응이어야 한다. */
+.kit-pulse {
+  display: inline-block;
+  animation: kit-tick 150ms ease-out;
+}
+
+@keyframes kit-tick {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .checkpoint-row {
@@ -929,8 +971,14 @@ onUnmounted(() => {
   font-family: var(--font-serif);
 }
 
-.ask-form button {
-  align-self: flex-start;
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.submit-btn {
   background: var(--ink);
   color: var(--paper);
   border: none;
@@ -938,14 +986,7 @@ onUnmounted(() => {
   border-radius: 2px;
 }
 
-.test-kit-row {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  flex-wrap: wrap;
-}
-
-.test-kit-row button {
+.test-kit-btn {
   padding: 0.55rem 1rem;
   background: transparent;
   color: var(--quarantine);
@@ -954,12 +995,23 @@ onUnmounted(() => {
   font-size: 0.85rem;
 }
 
-.test-kit-result {
-  color: var(--quarantine);
-  font-size: 0.85rem;
+/* 방문자 카드 한 켠에 남는 영구 태그 — 이 방문자를 검사했었다는 사실 자체를
+   잊지 않도록, 슬립이 사라진 뒤에도 계속 표시된다. */
+.test-kit-tag {
+  display: inline-block;
+  margin-left: 0.6rem;
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  vertical-align: middle;
 }
 
-.test-kit-result.positive {
+.test-kit-tag.negative {
+  color: var(--quarantine);
+}
+
+.test-kit-tag.positive {
   color: var(--stamp-red);
 }
 
