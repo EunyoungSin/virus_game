@@ -337,3 +337,26 @@ UI 톤: "관료적 공포" 컨셉(형광등 조명, 서류/클립보드, 판정 
 WSL에서 이 저장소가 `/mnt/c/...` 같은 Windows 드라이브 마운트에 있으면 파일 변경 감지(inotify)가
 안 되는 경우가 있어, `vite.config.ts`에서 `server.watch.usePolling: true`로 폴링 방식을 사용합니다.
 (순수 Linux 파일시스템에서는 필요 없지만 켜져 있어도 무해합니다.)
+
+## 배포
+
+무료 티어 조합: **백엔드/DB는 Render + Neon, 프론트엔드는 Vercel.**
+
+- **백엔드**: Render Web Service, Docker 런타임(`render.yaml` + `backend/Dockerfile` — Render
+  Blueprint가 Gradle/Java를 네이티브 런타임으로 인식하지 못해 Docker로 빌드). 멀티스테이지로
+  JDK 21에서 `bootJar`를 빌드한 뒤 JRE 21 이미지로 실행합니다. Render의 Docker 서비스는 `PORT`
+  환경변수로 리스닝 포트를 지정하므로 `application.yml`의 `server.port`를 `${PORT:8080}`으로
+  설정했습니다(로컬 실행 시에는 `PORT`가 없어 기존대로 8080). 필요한 환경변수:
+  `SPRING_DATASOURCE_URL`/`USERNAME`/`PASSWORD`(Neon 등 관리형 Postgres, `sslmode=require` 필요),
+  `GEMINI_API_KEY`, `CORS_ALLOWED_ORIGINS`(프론트 배포 도메인). `JWT_SECRET`은 Blueprint가
+  자동 생성합니다. 무료 플랜은 15분 미사용 시 슬립되며, 슬립 후 첫 요청은 콜드스타트로 응답이
+  느립니다.
+- **DB**: Neon(서버리스 Postgres). 신규 DB에 백엔드가 처음 뜰 때 `schema.sql`
+  (`CREATE TABLE IF NOT EXISTS`)이 자동 적용되므로 별도 마이그레이션 실행이 필요 없습니다.
+- **프론트엔드**: Vercel(Cloudflare Pages도 동일하게 가능). 모노레포라 Root Directory를
+  `frontend`로 지정해야 하며, 빌드는 `npm run build`, 출력은 `dist`. 환경변수
+  `VITE_API_BASE_URL`에 백엔드 URL을 지정합니다.
+
+배포 도메인이 바뀔 때마다 반대편 설정도 같이 갱신해야 합니다 — 프론트 도메인이 바뀌면 Render의
+`CORS_ALLOWED_ORIGINS`를, 백엔드 도메인이 바뀌면 프론트의 `VITE_API_BASE_URL`(재빌드 필요)을
+갱신합니다.
