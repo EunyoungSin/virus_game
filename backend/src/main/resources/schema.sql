@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS visitors (
 
     -- 증상: 감염 여부와 별도 확률로 생성 시점에 확정, 대화 내내 이 값을 그대로 연기한다
     has_symptom BOOLEAN NOT NULL DEFAULT false,
-    symptom_type VARCHAR(50),      -- 기침, 목간지러움, 미열 등
+    symptom_type VARCHAR(50),      -- 'COUGH' 또는 'FEVER'만 허용 (감염 증상 3종 중 물리적 2종)
     symptom_reason VARCHAR(100),   -- 감염 관련 또는 무관 사유(알레르기/흡연/과로/긴장 등)
 
     personality_trait VARCHAR(50),

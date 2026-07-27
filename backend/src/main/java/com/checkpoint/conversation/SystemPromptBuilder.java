@@ -40,7 +40,7 @@ final class SystemPromptBuilder {
             prompt.append(
                     "너는 %s 증상이 있다(%s). 관련 질문을 받으면 이 증상을 자연스럽게 언급하되, 증상이 있다는 "
                                     + "사실 자체는 대화 내내 동일하게 유지한다.\n"
-                            .formatted(visitor.getSymptomType(), visitor.getSymptomReason()));
+                            .formatted(symptomLabel(visitor.getSymptomType()), visitor.getSymptomReason()));
         } else {
             prompt.append("너는 특별한 증상이 없다. 증상 관련 질문을 받으면 괜찮다는 취지로, 별문제 없다고 답한다.\n");
         }
@@ -99,6 +99,16 @@ final class SystemPromptBuilder {
             case "뻔뻔" -> "뻔뻔(자신감 있는 태도, 거짓말도 당당하게 한다)";
             case "솔직" -> "솔직(기억이 흐릿할 수는 있지만 의도적으로 거짓말하지 않는다)";
             default -> trait;
+        };
+    }
+
+    // symptom_type은 DB/코드에서는 COUGH/FEVER로 저장되지만(감염 증상 3종 중 물리적 2종),
+    // 한국어 프롬프트 문장 안에서는 자연스럽게 "기침"/"발열"로 언급되어야 한다.
+    private static String symptomLabel(String symptomType) {
+        return switch (symptomType) {
+            case "COUGH" -> "기침";
+            case "FEVER" -> "발열";
+            default -> symptomType;
         };
     }
 

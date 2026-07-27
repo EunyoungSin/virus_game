@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class DecisionService {
 
     private static final int INNOCENT_REJECTED_PENALTY = 10;
-    private static final int TRUST_COLLAPSE_THRESHOLD = 20;
+    private static final int TRUST_COLLAPSE_THRESHOLD = 50;
 
     private final GameRepository gameRepository;
     private final VisitorRepository visitorRepository;

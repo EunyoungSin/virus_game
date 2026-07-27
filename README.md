@@ -27,7 +27,7 @@ Decision API(판정 + 신뢰도 반영 + Day 전환 + 엔딩 계산), 게임 결
 
 판정 규칙("전원 거부" 필승 전략 방지용 오탐 페널티): 비감염자를 REJECT(오탐)할 때마다 신뢰도 10점
 감소. **감염자를 ADMIT해도 신뢰도에는 즉시 영향이 없습니다** — 그 대가는 감점이 아니라 최종 엔딩
-등급으로만 반영됩니다. 신뢰도가 게임 도중 **20 이하로 떨어지면 남은 일차와 무관하게 즉시
+등급으로만 반영됩니다. 신뢰도가 게임 도중 **50 이하로 떨어지면 남은 일차와 무관하게 즉시
 FINISHED/BAD로 조기 종료**됩니다(신뢰 붕괴/소요 사태 서사). 조기 종료되지 않으면 하루 판정이 끝날
 때마다 다음 날로 전환되고, 마지막 날 방문자까지 전원 판정되면 FINISHED로 종료되며 `game_results`에
 결과가 기록됩니다.
@@ -39,12 +39,12 @@ FINISHED/BAD로 조기 종료**됩니다(신뢰 붕괴/소요 사태 서사). �
 2. 무고한 방문자(비감염자)를 **3명 이상 오탐 거부**했다면 위 등급을 한 단계 하향합니다
    (BEST→NORMAL, NORMAL→BAD, BAD는 그대로) — 감염자를 전혀 통과시키지 않았어도 적용되어
    "의심스러우면 무조건 거부"가 안전한 전략이 되지 않게 합니다.
-3. 신뢰 붕괴(20 이하)나 유휴 타임아웃으로 조기 종료된 경우는 위 계산과 무관하게 이미
+3. 신뢰 붕괴(50 이하)나 유휴 타임아웃으로 조기 종료된 경우는 위 계산과 무관하게 이미
    BAD로 확정되며, `ending_reason`도 각각 `TRUST_COLLAPSE`/`IDLE_TIMEOUT`으로 고정됩니다.
 
 BAD 엔딩은 `ending_reason`(`games`/`game_results` 컬럼) 하나로 세 갈래를 명확히 구분합니다 —
 더 이상 `total_processed` 값으로 유추하지 않습니다: `INFECTION_SPREAD`(12명 전원 처리 후에도
-감염자 3명 이상 통과), `TRUST_COLLAPSE`(신뢰도 20 이하 조기 종료), `IDLE_TIMEOUT`(유휴 타임아웃,
+감염자 3명 이상 통과), `TRUST_COLLAPSE`(신뢰도 50 이하 조기 종료), `IDLE_TIMEOUT`(유휴 타임아웃,
 아래 참고). 프론트 `content/story.ts`의 `resolveEndingEpilogue()`가 이 값으로 에필로그 텍스트를
 분기합니다.
 
@@ -61,12 +61,16 @@ BAD 엔딩은 `ending_reason`(`games`/`game_results` 컬럼) 하나로 세 갈�
 유도). `conversations`/`test-kit`/`decision`/`save`/`load` 등 실질 행동 API는 호출 시 모두
 `last_action_at`과 `last_heartbeat_at`을 함께 갱신합니다.
 
-증상·감염 판별: 증상은 감염 여부와 1:1로 대응하지 않습니다. `infection_stage`별로 증상 발현 확률이
-다르게 생성 시점에 확정됩니다(NONE 20~25%, EARLY 10~15%, INCUBATION 30~40%, LATE 70~80% — 비감염자도
-알레르기/흡연/과로 등으로 증상을 보일 수 있고, 감염 초기는 오히려 증상이 옅습니다). 대화만으로는
-100% 확신이 불가능하도록 설계되어 있고, 확정적 판별 수단은 검사키트뿐입니다: `POST
-/api/games/{gameId}/visitors/{visitorId}/test-kit`을 쓰면 해당 방문자의 `infected` 값을 그대로
-반환하고 `resources_left.testKit`을 1 차감합니다(자원 소진 시 409, 게임당 기본 3개).
+감염 증상은 정확히 3종으로 못박아 인트로 공문(`content/story.ts`의 `INTRO_BRIEFING`)에서
+플레이어에게 미리 안내합니다 — **기침**/**발열**(`visitors.symptom_type`, `COUGH`/`FEVER` 둘
+중 하나만 허용)과 **정신착란**(별도 필드 없이, AI 프롬프트의 "미묘한 말실수"·"회피 패턴"
+규칙이 곧 그 구현체). 증상은 감염 여부와 1:1로 대응하지 않습니다. `infection_stage`별로
+기침/발열 발현 확률이 다르게 생성 시점에 확정됩니다(NONE 10~15%, EARLY 10~15%, INCUBATION
+40~50%, LATE 85~90% — 비감염자도 알레르기/흡연/과로 등으로 증상을 보일 수 있고, 감염 초기는
+오히려 증상이 옅습니다). 대화만으로는 100% 확신이 불가능하도록 설계되어 있고, 확정적 판별
+수단은 검사키트뿐입니다: `POST /api/games/{gameId}/visitors/{visitorId}/test-kit`을 쓰면
+해당 방문자의 `infected` 값을 그대로 반환하고 `resources_left.testKit`을 1 차감합니다(자원
+소진 시 409, 게임당 기본 3개).
 
 Visitor 생성 규칙: 12종 아키타입(1~12번)이 매 게임 정확히 1회씩 등장(= 총원과 아키타입 수가 같아
 1:1 배정). 하루 일수(`game.days`, 기본 4)와 하루당 인원(`game.visitors-per-day`, 기본 3)은
@@ -287,7 +291,9 @@ CORS로 허용합니다(`cors.allowed-origins`, 필요 시 `CORS_ALLOWED_ORIGINS
 스토리 텍스트(`src/content/story.ts`, 스키마·API 추가 없이 프론트 정적 콘텐츠로만 관리):
 - **인트로**: 게임을 새로 시작할 때 1회만(`localStorage.checkpoint.introShown.<gameId>`) 내부
   공문이 스캔 리빌로 나타나고, 곧바로 "1일차" 타이틀 비트로 이어짐(`IntroBriefing.vue`). 항상
-  스킵 가능.
+  스킵 가능. 공문 안에 "[부기 — 감염 증상 안내]"로 기침/발열/정신착란 3종을 미리 공개해,
+  실제 방문자 생성 로직(`symptom_type`, AI 프롬프트의 말실수/회피 패턴 규칙)과 안내 내용이
+  정확히 일치하도록 되어 있습니다.
 - **일자별 서브타이틀**: 일자 전환 연출의 "다음 날 열림" 단계에 day_index별 한 줄 추가.
 - **일지 텍스트**: 같은 연출의 "서류철 닫힘" 단계, 요약 도장 아래에 그날까지 누적으로 통과시킨
   감염자 수(`GameSummaryResponse.infectedAdmittedSoFar` — 기존 `visitors.infected`/`decision`

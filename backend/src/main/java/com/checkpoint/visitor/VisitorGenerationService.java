@@ -27,7 +27,10 @@ public class VisitorGenerationService {
     private static final List<String> EXPOSURE_POINTS =
             List.of("남부 농장 접촉자 모임", "시장 인파 노출", "이재민 캠프 체류", "국경 검문소 대기줄", "병상 부족 임시 진료소", "공동 우물가");
 
-    private static final List<String> SYMPTOM_TYPES = List.of("기침", "목 간지러움", "미열", "피로감", "오한");
+    // 감염 증상은 정확히 3종으로 못박는다(인트로에서 플레이어에게 미리 안내됨): 물리적 증상
+    // 2종(기침/발열)은 이 필드로 생성되고, 세 번째인 "정신착란"은 별도 필드 없이 AI 프롬프트의
+    // 미묘한 말실수/회피 패턴 규칙이 곧 그 구현체다.
+    private static final List<String> SYMPTOM_TYPES = List.of("COUGH", "FEVER");
 
     private static final List<String> UNRELATED_SYMPTOM_REASONS =
             List.of("알레르기", "흡연", "과로", "긴장성 헛기침");
@@ -36,10 +39,10 @@ public class VisitorGenerationService {
     // EARLY는 오히려 낮은 확률만 갖는다.
     private static final Map<InfectionStage, double[]> SYMPTOM_PROBABILITY_RANGE =
             Map.of(
-                    InfectionStage.NONE, new double[] {0.20, 0.25},
+                    InfectionStage.NONE, new double[] {0.10, 0.15},
                     InfectionStage.EARLY, new double[] {0.10, 0.15},
-                    InfectionStage.INCUBATION, new double[] {0.30, 0.40},
-                    InfectionStage.LATE, new double[] {0.70, 0.80});
+                    InfectionStage.INCUBATION, new double[] {0.40, 0.50},
+                    InfectionStage.LATE, new double[] {0.85, 0.90});
 
     private static final List<String> SURNAMES =
             List.of("김", "이", "박", "최", "정", "강", "조", "윤", "장", "임");
