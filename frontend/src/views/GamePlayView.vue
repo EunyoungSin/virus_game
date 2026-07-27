@@ -550,7 +550,7 @@ onUnmounted(() => {
     <FlickeringLight :paused="lightPaused" :burst-token="lightBurstToken" />
 
     <header class="desk-header">
-      <button class="link label-stencil" @click="goToTitle">← 목록으로</button>
+      <button class="link label-stencil" @click="goToTitle">← 타이틀</button>
       <div v-if="summary" class="desk-readout label-mono">
         <span>DAY {{ summary.currentDay }}</span>
         <span>TRUST {{ summary.trustScore }}</span>
