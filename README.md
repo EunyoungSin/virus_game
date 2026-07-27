@@ -1,6 +1,7 @@
 # 검문소
 AI 기반 감염자 판별 텍스트 게임.<br>
-바이러스 봉쇄 도시의 출입관리소 직원이 되어 방문자와 대화를 통해 감염 여부를 추리하고 출입을 허가/거부하는 1인 텍스트 어드벤처.
+바이러스 봉쇄 도시의 출입관리소 직원이 되어 방문자와 대화를 통해 감염 여부를 추리하고 출입을 허가/거부하는 1인 텍스트 어드벤처.<br>
+https://virus-game-blond.vercel.app/ 에서 확인 해 보실 수 잇습니다.
 
 ## 기술 스택
 - Backend: Spring Boot 3 (Java 21, Gradle Kotlin DSL), JPA/Hibernate
