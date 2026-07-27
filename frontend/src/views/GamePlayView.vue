@@ -624,7 +624,7 @@ onUnmounted(() => {
           </div>
         </dl>
 
-        <div class="transcript">
+        <div class="transcript dialogue-scroll">
           <p v-if="conversation.length === 0" class="hint">질문지에 적어 방문자를 심문하십시오.</p>
           <div
             v-for="turn in conversation"
@@ -918,6 +918,30 @@ onUnmounted(() => {
   overflow-y: auto;
   border-top: 1px solid var(--paper-dark);
   padding-top: 0.75rem;
+}
+
+/* 대화 로그가 길어질 때 기본 브라우저 스크롤바 대신 서류철 톤의 각진 스크롤바를 쓴다 —
+   paper(밝은) 배경 위라 ink 색 손잡이를 쓰고, 둥근 모서리는 이 톤과 안 맞아 쓰지 않는다. */
+.dialogue-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dialogue-scroll::-webkit-scrollbar-track {
+  background: rgba(33, 29, 24, 0.08);
+}
+
+.dialogue-scroll::-webkit-scrollbar-thumb {
+  background: var(--ink);
+  border-radius: 0;
+}
+
+.dialogue-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--quarantine);
+}
+
+.dialogue-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink) rgba(33, 29, 24, 0.08);
 }
 
 .hint {

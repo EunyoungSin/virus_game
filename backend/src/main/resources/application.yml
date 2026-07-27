@@ -37,10 +37,15 @@ game:
 gemini:
   base-url: https://generativelanguage.googleapis.com/v1beta/models
   api-key: ${GEMINI_API_KEY:}
-  model: ${GEMINI_MODEL:gemini-flash-latest}
-  fallback-model: ${GEMINI_FALLBACK_MODEL:gemini-flash-lite-latest}
+  # flash-lite를 기본으로 승격 — 실측 결과 flash-latest 대비 응답이 ~3배 빠르고(약 1s vs
+  # 2.7s+), 연속 호출 시 flash-latest 쪽에서 429/503이 더 쉽게 발생해 재시도 백오프까지
+  # 겹치면 체감 지연이 훨씬 커졌다. flash-latest는 fallback으로만 남겨둔다.
+  model: ${GEMINI_MODEL:gemini-flash-lite-latest}
+  fallback-model: ${GEMINI_FALLBACK_MODEL:gemini-flash-latest}
   max-retries: 3
   initial-backoff-ms: 500
   # Gemini 3.x models spend part of maxOutputTokens on invisible "thinking" tokens before
   # the visible answer; too low a budget here truncates the answer (finishReason=MAX_TOKENS).
+  # thinkingConfig.thinkingBudget으로 이를 끄려는 시도는 실제 API가 400으로 거부해 불가능함을
+  # 확인했다(두 모델 다 동일) — 쓰지 말 것.
   max-output-tokens: 1024
