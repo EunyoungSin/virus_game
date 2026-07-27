@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { deleteSaveSlot, getSummary, listSaveSlots, loadGame, saveGame, sendHeartbeat } from '../api/games'
 import { ask, getHistory } from '../api/conversations'
@@ -45,6 +45,7 @@ const HESITATION_PATTERN = /(\.{2,}|…|아[,.]|그[,.]|음[,.]|저[,.]{1,2})/
 const summary = ref<GameSummary | null>(null)
 const visitor = ref<Visitor | null>(null)
 const conversation = ref<ConversationTurn[]>([])
+const transcriptEl = ref<HTMLDivElement | null>(null)
 const question = ref('')
 const topicTag = ref<TopicTag | ''>('')
 const feedback = ref<'correct' | 'incorrect' | null>(null)
@@ -106,15 +107,15 @@ const activeConfirm = ref<ConfirmModalConfig | null>(null)
 let resolveStampDone: (() => void) | null = null
 let resolveDayTransitionDone: (() => void) | null = null
 
-// 게임 화면이 실제로 열려있는 동안에만 30초 간격으로 하트비트를 보낸다(유휴 타임아웃 판정용).
-// 탭이 백그라운드로 전환되면 전송을 멈춘다 — 그 시간은 유휴로 카운트되지 않는다.
+// 이 게임 화면이 마운트되어 있는 동안에는(탭이 백그라운드에 있어도) 30초 간격으로
+// 하트비트를 보낸다(유휴 타임아웃 판정용) — document.visibilityState는 더 이상 조건으로
+// 쓰지 않는다. 화면이 언마운트될 때만(탭을 닫거나 다른 라우트로 이동) 전송이 멈춘다.
+// 브라우저가 백그라운드 탭의 타이머를 스로틀링해 정확히 30초 간격이 안 지켜질 수 있지만,
+// 서버는 간격이 아니라 last_action_at 기준 누적 시간으로 판단하므로 문제되지 않는다.
 const HEARTBEAT_INTERVAL_MS = 30_000
 let heartbeatTimer: number | null = null
 
 async function sendHeartbeatOnce() {
-  if (document.visibilityState !== 'visible') {
-    return
-  }
   try {
     const result = await sendHeartbeat(gameId)
     if (result.status === 'FINISHED') {
@@ -137,14 +138,6 @@ function stopHeartbeat() {
   if (heartbeatTimer !== null) {
     window.clearInterval(heartbeatTimer)
     heartbeatTimer = null
-  }
-}
-
-function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    startHeartbeat()
-  } else {
-    stopHeartbeat()
   }
 }
 
@@ -209,6 +202,10 @@ async function submitQuestion() {
       topicTag: askedTopic,
     })
     question.value = ''
+    await nextTick()
+    if (transcriptEl.value) {
+      transcriptEl.value.scrollTop = transcriptEl.value.scrollHeight
+    }
   } catch {
     errorMessage.value = 'AI 응답을 받지 못했습니다. 다시 시도해주세요.'
   } finally {
@@ -540,15 +537,11 @@ onMounted(async () => {
     showIntro.value = true
   }
   await loadNextVisitor()
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  if (document.visibilityState === 'visible') {
-    startHeartbeat()
-  }
+  startHeartbeat()
 })
 
 onUnmounted(() => {
   stopHeartbeat()
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -624,7 +617,7 @@ onUnmounted(() => {
           </div>
         </dl>
 
-        <div class="transcript dialogue-scroll">
+        <div ref="transcriptEl" class="transcript dialogue-scroll">
           <p v-if="conversation.length === 0" class="hint">질문지에 적어 방문자를 심문하십시오.</p>
           <div
             v-for="turn in conversation"

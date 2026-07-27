@@ -21,6 +21,17 @@ public class VisitorGenerationService {
     private static final List<InfectionStage> INFECTED_STAGES =
             List.of(InfectionStage.EARLY, InfectionStage.INCUBATION, InfectionStage.LATE);
 
+    // 난이도 커브: "먼저 감염된 사람일수록 증상이 심하다"는 논리로, 1일차 감염자는 대부분
+    // LATE(증상 뚜렷, 판별 쉬움)이고 마지막 날로 갈수록 EARLY(증상 옅음, 판별 어려움) 비중이
+    // 높아진다. 순서는 INFECTED_STAGES와 동일(EARLY, INCUBATION, LATE)하게 맞춰야 한다.
+    // 표는 4일 구조 기준 고정값이라, game.days가 4가 아니면 day를 1~4 사이로 clamp해서 쓴다.
+    private static final Map<Integer, double[]> INFECTION_STAGE_WEIGHTS_BY_DAY =
+            Map.of(
+                    1, new double[] {0.10, 0.20, 0.70},
+                    2, new double[] {0.15, 0.25, 0.60},
+                    3, new double[] {0.25, 0.30, 0.45},
+                    4, new double[] {0.40, 0.30, 0.30});
+
     private static final List<String> ORIGIN_CITIES =
             List.of("남부 농경지대", "동부 항만도시", "중앙 산업구역", "북부 국경마을", "서부 이재민촌", "구시가지", "위성 도시");
 
@@ -127,13 +138,26 @@ public class VisitorGenerationService {
         visitor.setTravelHistory(buildTravelHistory(originCity));
 
         visitor.setInfected(infected);
-        visitor.setInfectionStage(infected ? randomFrom(INFECTED_STAGES) : InfectionStage.NONE);
+        visitor.setInfectionStage(infected ? pickInfectionStage(day) : InfectionStage.NONE);
         visitor.setExposurePoint(infected ? randomFrom(EXPOSURE_POINTS) : null);
 
         applyUnrelatedLie(visitor, archetype);
         applySymptom(visitor);
         visitor.setPersonalityTrait(pickPersonality(archetype.getPersonalityPool(), day));
         return visitor;
+    }
+
+    private InfectionStage pickInfectionStage(int day) {
+        double[] weights = INFECTION_STAGE_WEIGHTS_BY_DAY.get(Math.min(Math.max(day, 1), 4));
+        double roll = random.nextDouble();
+        double cumulative = 0;
+        for (int i = 0; i < INFECTED_STAGES.size(); i++) {
+            cumulative += weights[i];
+            if (roll < cumulative) {
+                return INFECTED_STAGES.get(i);
+            }
+        }
+        return INFECTED_STAGES.get(INFECTED_STAGES.size() - 1);
     }
 
     private void applySymptom(Visitor visitor) {

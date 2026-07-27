@@ -35,6 +35,12 @@ const impactSlotNo = ref<number | null>(null)
 // emit('deleteSlot')이 나가고, "취소"나 ESC는 config.onCancel()로 모달만 닫는다.
 const deleteConfirm = ref<ConfirmModalConfig | null>(null)
 
+// "사건 이어하기" 화면(타이틀에서 진입하는 LOAD)에서는 완료된 게임이라도 엔딩 뱃지를
+// 표시하지 않는다 — 일반 슬롯과 동일하게 보이며 클릭하면 그대로 로드된다. 엔딩 정보는
+// 별도의 "엔딩 기록 보관소" 화면에서만 확인한다. 게임 내 "불러오기"/"저장" 화면에서는
+// 계속 표시한다.
+const showEndingBadge = computed(() => !(props.mode === 'LOAD' && props.entryContext === 'FROM_TITLE'))
+
 const copy = computed(() => {
   if (props.mode === 'SAVE') {
     return {
@@ -134,7 +140,7 @@ function onBackToTitle() {
               <span class="slot-no label-mono">SLOT {{ slot.slotNo }}</span>
               <span v-if="slot.occupied" class="slot-title label-stencil">
                 사건 #{{ slot.gameId }} · {{ slot.day }}일차
-                <span v-if="slot.gameStatus === 'FINISHED'" class="badge label-mono">
+                <span v-if="showEndingBadge && slot.gameStatus === 'FINISHED'" class="badge label-mono">
                   종료됨 · <span class="ending-type">{{ slot.endingType }}</span>
                 </span>
               </span>
