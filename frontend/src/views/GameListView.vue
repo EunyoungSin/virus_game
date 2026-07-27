@@ -69,11 +69,11 @@ onMounted(loadSlots)
       v-else
       :slots="slots"
       mode="LOAD"
-      scope="GLOBAL"
+      entry-context="FROM_TITLE"
       :loading-slot-no="loadingSlotNo"
       @select="onSelectSlot"
       @delete-slot="onDeleteSlot"
-      @cancel="goToTitle"
+      @back-to-title="goToTitle"
     />
   </div>
 </template>

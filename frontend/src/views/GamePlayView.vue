@@ -8,15 +8,14 @@ import { decide } from '../api/decisions'
 import { nextVisitor, useTestKit } from '../api/visitors'
 import { useAuthStore } from '../stores/auth'
 import { FINAL_DAY } from '../content/story'
+import ConfirmModal from '../components/ConfirmModal.vue'
 import DayTransitionOverlay from '../components/DayTransitionOverlay.vue'
-import ExitToListConfirmModal from '../components/ExitToListConfirmModal.vue'
 import FlickeringLight from '../components/FlickeringLight.vue'
 import IntroBriefing from '../components/IntroBriefing.vue'
-import SimpleConfirmModal from '../components/SimpleConfirmModal.vue'
-import SlotOverwriteConfirmModal from '../components/SlotOverwriteConfirmModal.vue'
 import SlotPicker from '../components/SlotPicker.vue'
 import StampOverlay from '../components/StampOverlay.vue'
 import type {
+  ConfirmModalConfig,
   ConversationTurn,
   Decision,
   GameSummary,
@@ -52,6 +51,10 @@ const dossierTilt = ref(0)
 const stampDecision = ref<Decision | null>(null)
 
 const loadingVisitor = ref(true)
+// 일자 전환 3단계(다음 날 도입 문구) 동안 다음 방문자를 미리 인계받아 흐릿하게(투명도
+// 15~20%) 비춰 보여주는 중인지. 도입 문구를 클릭하는 순간(onDayTransitionDone) 해제되어
+// 또렷하게 페이드인한다.
+const visitorFaint = ref(false)
 const asking = ref(false)
 const deciding = ref(false)
 const usingTestKit = ref(false)
@@ -80,18 +83,18 @@ const showIntro = ref(false)
 const showSavePicker = ref(false)
 const saveSlots = ref<SaveSlot[]>([])
 const savePickerLoading = ref(false)
-const pendingSaveTarget = ref<SaveSlot | null>(null)
 const savingSlotNo = ref<number | null>(null)
-const pendingSaveIsSameGame = computed(() => pendingSaveTarget.value?.gameId === gameId)
 
-// 목록으로 나가기: 이 게임을 가리키는 슬롯이 있으면 CURRENT_GAME scope 선택 화면을,
-// 없으면 기존 "저장하지 않고 나가기" 확인 모달을 보여준다(둘 다 결국 /games로 이동).
-const showExitConfirm = ref(false)
-const showExitPicker = ref(false)
-const exitPickerLoading = ref(false)
-const exitSlots = ref<SaveSlot[]>([])
-const pendingExitLoadSlot = ref<SaveSlot | null>(null)
-const exitingToList = ref(false)
+// 불러오기: "저장" 옆의 독립 버튼. "목록으로"에 더 이상 종속되지 않으며, 현재 플레이
+// 중인 게임으로 한정하지 않고 유저의 슬롯 5개 전체(GLOBAL)를 보여준다.
+const showLoadPicker = ref(false)
+const loadSlots = ref<SaveSlot[]>([])
+const loadPickerLoading = ref(false)
+const loadingSlotNo = ref<number | null>(null)
+
+// 저장 덮어쓰기/슬롯 불러오기 확인 등 모든 확인 모달은 이 하나의
+// config로 <ConfirmModal />을 채워 쓴다 — 동시에 두 개가 뜰 일이 없으므로 슬롯 하나로 충분하다.
+const activeConfirm = ref<ConfirmModalConfig | null>(null)
 
 let resolveStampDone: (() => void) | null = null
 let resolveDayTransitionDone: (() => void) | null = null
@@ -211,8 +214,17 @@ function onStampDone() {
   resolveStampDone = null
 }
 
+// 일자 전환 3단계 진입 시점 — 다음 방문자를 미리 인계받아 흐릿한 실루엣으로 보여준다.
+// 아직 확정되지 않은 존재라는 뉘앙스이며, 도입 문구를 클릭하기 전까지는 상호작용할
+// 수 없다(inert).
+function handleEnterIntro() {
+  visitorFaint.value = true
+  loadNextVisitor()
+}
+
 function onDayTransitionDone() {
   dayTransition.value = null
+  visitorFaint.value = false
   resolveDayTransitionDone?.()
   resolveDayTransitionDone = null
 }
@@ -267,11 +279,15 @@ async function submitDecision(decision: Decision) {
         infectedAdmittedSoFar: result.game.infectedAdmittedSoFar,
         isFinalDay: false,
       }
+      dayLog.value = []
+      trustAtDayStart.value = result.game.trustScore
+      // 다음 방문자는 3단계(다음 날 도입 문구) 진입 시점(@enter-intro → handleEnterIntro)에
+      // 이미 미리 인계받아 흐릿하게 보여준다 — 도입 문구를 클릭(done)하면 또렷해질 뿐이므로
+      // 여기서 다시 불러올 필요가 없다.
       await new Promise<void>((resolve) => {
         resolveDayTransitionDone = resolve
       })
-      dayLog.value = []
-      trustAtDayStart.value = result.game.trustScore
+      return
     }
 
     await loadNextVisitor()
@@ -336,20 +352,45 @@ function onSaveSlotSelect(slotNo: number) {
     performSave(slotNo)
     return
   }
-  pendingSaveTarget.value = slot
-}
-
-function cancelSaveOverwrite() {
-  pendingSaveTarget.value = null
-}
-
-async function confirmSaveOverwrite() {
-  const slot = pendingSaveTarget.value
-  if (!slot) {
+  if (slot.gameId === gameId) {
+    activeConfirm.value = {
+      eyebrow: '슬롯 덮어쓰기 승인 요청',
+      title: '이 시점을 덮어씁니다',
+      body: `슬롯 ${slot.slotNo}의 기존 기록을 현재 진행 상태로 덮어씁니다.`,
+      warning: '계속하시겠습니까?',
+      watermark: '슬롯 갱신',
+      watermarkVariant: 'quarantine',
+      confirmLabel: '덮어쓰기',
+      onConfirm: () => {
+        activeConfirm.value = null
+        performSave(slot.slotNo)
+      },
+      onCancel: () => {
+        activeConfirm.value = null
+      },
+    }
     return
   }
-  pendingSaveTarget.value = null
-  await performSave(slot.slotNo)
+  if (slot.gameId == null || slot.day == null || !slot.gameStatus) {
+    return
+  }
+  activeConfirm.value = {
+    eyebrow: '슬롯 덮어쓰기 승인 요청',
+    title: '다른 사건의 기록을 덮어씁니다',
+    tag: `SLOT ${slot.slotNo} · 사건 #${slot.gameId} (${slot.day}일차${slot.gameStatus === 'FINISHED' ? ' · 종료됨' : ''})`,
+    body: '이 슬롯에는 다른 사건의 기록이 있습니다. 덮어쓰면 그 기록은 사라집니다.',
+    warning: '정말 덮어쓰시겠습니까?',
+    watermark: '슬롯 충돌',
+    watermarkVariant: 'stampRed',
+    confirmLabel: '덮어쓰기',
+    onConfirm: () => {
+      activeConfirm.value = null
+      performSave(slot.slotNo)
+    },
+    onCancel: () => {
+      activeConfirm.value = null
+    },
+  }
 }
 
 async function performSave(slotNo: number) {
@@ -377,97 +418,93 @@ async function onSaveSlotDelete(slotNo: number) {
   }
 }
 
-// --- 목록으로 나가기 ---
-async function requestExitToList() {
+// --- 목록으로: 확인 없이 곧장 타이틀 화면으로 ---
+// 어떤 API도 호출하지 않는다 — 라이브 게임 상태(games/visitors/conversations)는
+// 그대로 둔 채 화면만 이동한다.
+function goToTitle() {
+  router.push({ name: 'title' })
+}
+
+// --- 불러오기: "저장" 옆의 독립 버튼. 현재 게임으로 한정하지 않고 유저의 슬롯 5개
+// 전체(GLOBAL)를 보여준다 — 다른 게임의 시점을 선택해도 정상 동작한다. ---
+async function openLoadPicker() {
   errorMessage.value = ''
-  exitPickerLoading.value = true
+  loadPickerLoading.value = true
   try {
-    const allSlots = await listSaveSlots(auth.userId as number)
-    exitSlots.value = allSlots.filter((s) => s.occupied && s.gameId === gameId)
-    if (exitSlots.value.length === 0) {
-      showExitConfirm.value = true
+    loadSlots.value = await listSaveSlots(auth.userId as number)
+    showLoadPicker.value = true
+  } catch {
+    errorMessage.value = '저장 슬롯을 불러오지 못했습니다.'
+  } finally {
+    loadPickerLoading.value = false
+  }
+}
+
+// "취소하고 돌아가기" — 어떤 API도 호출하지 않고 슬롯 화면만 닫아 원래 진행 중이던
+// 게임 화면으로 복귀한다(라이브 상태 변경 없음).
+function cancelLoadPicker() {
+  showLoadPicker.value = false
+}
+
+function onLoadSlotSelect(slotNo: number) {
+  const slot = loadSlots.value.find((s) => s.slotNo === slotNo)
+  if (!slot || !slot.occupied || slot.gameId == null) {
+    return
+  }
+  activeConfirm.value = {
+    eyebrow: '기록 복원 요청',
+    title: '이 시점으로 되돌리기',
+    tag: `SLOT ${slot.slotNo} · 사건 #${slot.gameId}${slot.day != null ? ` (${slot.day}일차)` : ''}`,
+    body: '이 시점으로 되돌립니다. 이후 진행은 사라집니다.',
+    warning: '계속하시겠습니까?',
+    watermark: '기록 정정',
+    watermarkVariant: 'quarantine',
+    confirmLabel: '이어하기',
+    onConfirm: () => {
+      activeConfirm.value = null
+      performLoad(slot)
+    },
+    onCancel: () => {
+      activeConfirm.value = null
+    },
+  }
+}
+
+async function performLoad(slot: SaveSlot) {
+  if (slot.gameId == null) {
+    return
+  }
+  loadingSlotNo.value = slot.slotNo
+  errorMessage.value = ''
+  try {
+    const loadedSummary = await loadGame(slot.gameId, slot.slotNo)
+    if (loadedSummary.gameId === gameId) {
+      // 지금 플레이 중인 게임의 다른 시점으로 되돌린 경우 — gameId가 같아 라우팅으로는
+      // 화면이 새로고침되지 않으므로, 이 화면의 상태를 직접 되돌린 시점 기준으로 갱신한다.
+      showLoadPicker.value = false
+      summary.value = loadedSummary
+      dayLog.value = []
+      trustAtDayStart.value = loadedSummary.trustScore
+      feedback.value = null
+      testKitResult.value = null
+      await loadNextVisitor()
     } else {
-      showExitPicker.value = true
+      router.push({ name: 'game-play', params: { gameId: loadedSummary.gameId } })
     }
   } catch {
-    errorMessage.value = '저장 슬롯 정보를 불러오지 못했습니다.'
-  } finally {
-    exitPickerLoading.value = false
-  }
-}
-
-function cancelExitToList() {
-  showExitConfirm.value = false
-}
-
-// 이 게임을 가리키는 저장 슬롯이 하나도 없는 경우 — 되돌릴 대상이 없으므로 API 호출 없이 그냥 나간다.
-function confirmExitToList() {
-  showExitConfirm.value = false
-  router.push({ name: 'game-list' })
-}
-
-function cancelExitPicker() {
-  showExitPicker.value = false
-}
-
-function onExitSlotSelect(slotNo: number) {
-  const slot = exitSlots.value.find((s) => s.slotNo === slotNo)
-  if (!slot) {
-    return
-  }
-  pendingExitLoadSlot.value = slot
-}
-
-function cancelExitLoad() {
-  pendingExitLoadSlot.value = null
-}
-
-async function confirmExitLoad() {
-  const slot = pendingExitLoadSlot.value
-  if (!slot || slot.gameId == null) {
-    return
-  }
-  exitingToList.value = true
-  errorMessage.value = ''
-  try {
-    await loadGame(slot.gameId, slot.slotNo)
-    router.push({ name: 'game-list' })
-  } catch {
     errorMessage.value = '불러오기에 실패했습니다.'
-    exitingToList.value = false
   } finally {
-    pendingExitLoadSlot.value = null
+    loadingSlotNo.value = null
   }
 }
 
-async function onExitSlotDelete(slotNo: number) {
+async function onLoadSlotDelete(slotNo: number) {
   errorMessage.value = ''
   try {
     await deleteSaveSlot(auth.userId as number, slotNo)
-    exitSlots.value = exitSlots.value.filter((s) => s.slotNo !== slotNo)
-    if (exitSlots.value.length === 0) {
-      showExitPicker.value = false
-    }
+    loadSlots.value = await listSaveSlots(auth.userId as number)
   } catch {
     errorMessage.value = '슬롯을 삭제하지 못했습니다.'
-  }
-}
-
-// 일자 전환 연출의 "저장하시겠습니까?" 넛지는 슬롯을 고르는 화면이 아니라 빠른 확인 한 번이어야
-// 한다(연출 자체가 사용자 클릭을 기다리는 블로킹 게이트라, 그 안에서 또 다른 화면을 열면 흐름이
-// 무거워진다). 그래서 슬롯은 자동으로 고른다: 이 게임이 이미 차지한 슬롯이 있으면 그걸 갱신하고,
-// 없으면 빈 슬롯 중 하나를 새로 쓴다. 쓸 수 있는 슬롯이 전혀 없으면(5개 전부 다른 게임 차지) 조용히
-// 건너뛴다 — 이 넛지 하나 때문에 하루 전환이 막혀서는 안 된다.
-async function handleDayTransitionSave() {
-  try {
-    const slots = await listSaveSlots(auth.userId as number)
-    const target = slots.find((s) => s.occupied && s.gameId === gameId) ?? slots.find((s) => !s.occupied)
-    if (!target) {
-      return
-    }
-    await performSave(target.slotNo)
-  } catch {
-    // 저장 실패가 하루 전환 흐름 자체를 막지는 않는다.
   }
 }
 
@@ -505,9 +542,7 @@ onUnmounted(() => {
     <FlickeringLight :paused="lightPaused" :burst-token="lightBurstToken" />
 
     <header class="desk-header">
-      <button class="link label-stencil" :disabled="exitPickerLoading" @click="requestExitToList">
-        ← 목록으로
-      </button>
+      <button class="link label-stencil" @click="goToTitle">← 목록으로</button>
       <div v-if="summary" class="desk-readout label-mono">
         <span>DAY {{ summary.currentDay }}</span>
         <span>TRUST {{ summary.trustScore }}</span>
@@ -519,6 +554,9 @@ onUnmounted(() => {
     <div class="checkpoint-row">
       <button class="label-stencil" :disabled="savePickerLoading" @click="openSavePicker">
         {{ savePickerLoading ? '슬롯 확인 중...' : '저장' }}
+      </button>
+      <button class="label-stencil" :disabled="loadPickerLoading" @click="openLoadPicker">
+        {{ loadPickerLoading ? '슬롯 확인 중...' : '불러오기' }}
       </button>
     </div>
     <p v-if="checkpointMessage" class="checkpoint-message label-mono">{{ checkpointMessage }}</p>
@@ -533,7 +571,7 @@ onUnmounted(() => {
 
     <p v-if="loadingVisitor" class="loading-line label-mono">다음 서류를 인계받는 중...</p>
 
-    <div v-else-if="visitor" class="desk">
+    <div v-else-if="visitor" class="desk" :class="{ faint: visitorFaint }" :inert="visitorFaint">
       <article class="dossier" :style="{ transform: `rotate(${dossierTilt}deg)` }">
         <div class="dossier-clip" aria-hidden="true"></div>
         <h2 class="dossier-name">
@@ -632,8 +670,8 @@ onUnmounted(() => {
     <DayTransitionOverlay
       v-if="dayTransition"
       v-bind="dayTransition"
-      :request-save="handleDayTransitionSave"
       @done="onDayTransitionDone"
+      @enter-intro="handleEnterIntro"
       @freeze-light="(v) => (lightPaused = v)"
       @burst-light="lightBurstToken++"
     />
@@ -642,53 +680,23 @@ onUnmounted(() => {
       v-if="showSavePicker"
       :slots="saveSlots"
       mode="SAVE"
-      scope="GLOBAL"
       :loading-slot-no="savingSlotNo"
       @select="onSaveSlotSelect"
       @delete-slot="onSaveSlotDelete"
       @cancel="cancelSavePicker"
     />
-    <SimpleConfirmModal
-      v-if="pendingSaveTarget && pendingSaveIsSameGame"
-      title="이 시점을 덮어씁니다"
-      :body="`슬롯 ${pendingSaveTarget.slotNo}의 기존 기록을 현재 진행 상태로 덮어씁니다. 계속하시겠습니까?`"
-      confirm-label="덮어쓰기"
-      @confirm="confirmSaveOverwrite"
-      @cancel="cancelSaveOverwrite"
-    />
-    <SlotOverwriteConfirmModal
-      v-if="pendingSaveTarget && !pendingSaveIsSameGame && pendingSaveTarget.gameId != null && pendingSaveTarget.day != null && pendingSaveTarget.gameStatus"
-      :slot-no="pendingSaveTarget.slotNo"
-      :game-id="pendingSaveTarget.gameId"
-      :day="pendingSaveTarget.day"
-      :game-status="pendingSaveTarget.gameStatus"
-      @confirm="confirmSaveOverwrite"
-      @cancel="cancelSaveOverwrite"
-    />
-
-    <ExitToListConfirmModal
-      v-if="showExitConfirm"
-      @confirm="confirmExitToList"
-      @cancel="cancelExitToList"
-    />
     <SlotPicker
-      v-if="showExitPicker"
-      :slots="exitSlots"
+      v-if="showLoadPicker"
+      :slots="loadSlots"
       mode="LOAD"
-      scope="CURRENT_GAME"
-      :loading-slot-no="exitingToList ? pendingExitLoadSlot?.slotNo ?? null : null"
-      @select="onExitSlotSelect"
-      @delete-slot="onExitSlotDelete"
-      @cancel="cancelExitPicker"
+      entry-context="FROM_IN_GAME"
+      :loading-slot-no="loadingSlotNo"
+      @select="onLoadSlotSelect"
+      @delete-slot="onLoadSlotDelete"
+      @cancel="cancelLoadPicker"
+      @back-to-title="goToTitle"
     />
-    <SimpleConfirmModal
-      v-if="pendingExitLoadSlot"
-      title="이 시점으로 되돌립니다"
-      body="선택한 시점 이후의 판정과 대화는 사라집니다. 계속하시겠습니까?"
-      confirm-label="이어하기"
-      @confirm="confirmExitLoad"
-      @cancel="cancelExitLoad"
-    />
+    <ConfirmModal v-if="activeConfirm" :config="activeConfirm" />
   </div>
 </template>
 
@@ -789,6 +797,24 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  opacity: 1;
+  filter: blur(0);
+  transition:
+    opacity 350ms ease,
+    filter 350ms ease;
+}
+
+/* 일자 전환 3단계(다음 날 도입 문구) 동안 다음 방문자를 흐릿한 실루엣으로만 보여준다 —
+   아직 확정되지 않은 존재라는 뉘앙스. 도입 문구를 클릭하면 또렷하게 페이드인한다. */
+.desk.faint {
+  opacity: 0.18;
+  filter: blur(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk {
+    transition: none;
+  }
 }
 
 .dossier {

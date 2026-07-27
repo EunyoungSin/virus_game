@@ -115,17 +115,19 @@ onUnmounted(() => {
   width: 100%;
 }
 
+/* 종이 한 장이 스캔되듯 위→아래로 드러나야 한다 — 가려진 영역(void 마스크)의
+   top-inset을 늘려 아래로 밀어내는 방식으로, 위쪽부터 먼저 드러나게 한다. */
 .reveal-mask {
   position: absolute;
   inset: 0;
   z-index: 2;
   background: var(--void);
-  clip-path: inset(0 0 0% 0);
+  clip-path: inset(0 0 0 0);
   animation: reveal 2400ms linear forwards;
 }
 
 .reveal-mask.revealed {
-  clip-path: inset(0 0 100% 0);
+  clip-path: inset(100% 0 0 0);
 }
 
 .primary {
@@ -160,10 +162,10 @@ onUnmounted(() => {
 
 @keyframes reveal {
   from {
-    clip-path: inset(0 0 0% 0);
+    clip-path: inset(0 0 0 0);
   }
   to {
-    clip-path: inset(0 0 100% 0);
+    clip-path: inset(100% 0 0 0);
   }
 }
 </style>

@@ -86,6 +86,23 @@ export interface EndingArchiveEntry {
   finishedAt: string
 }
 
+// 게임 완전 삭제/목록으로 나가기/슬롯 불러오기·덮어쓰기·삭제 등 모든 확인 모달은 레이아웃이
+// 동일하고 텍스트/색상만 다르므로, 개별 컴포넌트 대신 이 config로 <ConfirmModal />을 채워 쓴다.
+export interface ConfirmModalConfig {
+  eyebrow: string
+  title: string
+  tag?: string
+  body: string
+  destination?: string
+  warning?: string
+  watermark: string
+  watermarkVariant: 'stampRed' | 'quarantine'
+  confirmLabel: string
+  cancelLabel?: string
+  onConfirm: () => void
+  onCancel: () => void
+}
+
 // 저장 슬롯은 게임이 아니라 유저 전역 자원(최대 5개)이다. "사건 이어하기" 화면은 이 목록 그 자체다.
 export interface SaveSlot {
   slotNo: number

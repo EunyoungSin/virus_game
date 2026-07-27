@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import type { ConfirmModalConfig } from '../types'
 
-const props = defineProps<{ loading?: boolean }>()
-const emit = defineEmits<{ confirm: []; cancel: [] }>()
+const props = defineProps<{ config: ConfirmModalConfig }>()
 
 const reducedMotion =
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -10,23 +10,17 @@ const reducedMotion =
 const impact = ref(false)
 
 async function onConfirm() {
-  if (props.loading) {
-    return
-  }
   if (reducedMotion) {
-    emit('confirm')
+    props.config.onConfirm()
     return
   }
   impact.value = true
   await new Promise((resolve) => window.setTimeout(resolve, 280))
-  emit('confirm')
+  props.config.onConfirm()
 }
 
 function onCancel() {
-  if (props.loading) {
-    return
-  }
-  emit('cancel')
+  props.config.onCancel()
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -41,25 +35,30 @@ function onKeydown(event: KeyboardEvent) {
     <div
       class="confirm-card"
       :class="{ shake: impact }"
+      :data-watermark="config.watermark"
+      :data-watermark-variant="config.watermarkVariant"
       role="alertdialog"
       aria-labelledby="confirmTitle"
       aria-describedby="confirmBody"
     >
-      <p class="eyebrow label-mono">근무지 이탈 승인 요청</p>
-      <h2 id="confirmTitle" class="label-stencil">목록으로 나가기</h2>
-      <p id="confirmBody" class="body-text">저장 이후 진행한 판정과 대화는 모두 사라집니다.</p>
-      <p class="destination-line label-mono">→ 사건 이어하기 목록으로 이동</p>
-      <p class="warning-line label-mono">계속하시겠습니까?</p>
+      <p class="eyebrow label-mono">{{ config.eyebrow }}</p>
+      <h2 id="confirmTitle" class="label-stencil">{{ config.title }}</h2>
+      <p v-if="config.tag" class="tag label-mono">{{ config.tag }}</p>
+      <p id="confirmBody" class="body-text">{{ config.body }}</p>
+      <p v-if="config.destination" class="destination label-mono">{{ config.destination }}</p>
+      <p v-if="config.warning" class="warning-line label-mono">{{ config.warning }}</p>
 
       <div class="actions">
-        <button class="btn label-stencil" :disabled="loading || impact" @click="onCancel">취소</button>
+        <button class="btn label-stencil" :disabled="impact" @click="onCancel">
+          {{ config.cancelLabel ?? '취소' }}
+        </button>
         <button
           class="btn destructive label-stencil"
           :class="{ impact }"
-          :disabled="loading || impact"
+          :disabled="impact"
           @click="onConfirm"
         >
-          {{ loading ? '이동 중...' : '확인' }}
+          {{ config.confirmLabel }}
         </button>
       </div>
     </div>
@@ -84,17 +83,17 @@ function onKeydown(event: KeyboardEvent) {
   background: var(--paper);
   color: var(--ink);
   width: min(380px, 88%);
-  padding: 28px 26px 24px;
+  padding: 26px 24px 22px;
   transform: rotate(-0.6deg);
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(0, 0, 0, 0.15);
-  animation: pop-in 0.22s ease;
+  animation: pop-in 0.2s ease;
   overflow: hidden;
 }
 
-/* "자리를 비운다"는 행동에 맞춘 워터마크 — 근무 수칙 1항과 같은 결. */
+/* 워터마크 텍스트/색은 config로 채워지는 data-attribute를 그대로 읽어 그린다. */
 .confirm-card::after {
-  content: '이탈 승인';
+  content: attr(data-watermark);
   position: absolute;
   top: 46%;
   left: 50%;
@@ -102,26 +101,43 @@ function onKeydown(event: KeyboardEvent) {
   font-family: var(--font-stencil);
   font-size: 40px;
   letter-spacing: 0.15em;
-  color: var(--quarantine);
-  opacity: 0.13;
   white-space: nowrap;
   pointer-events: none;
+  color: var(--stamp-red);
+  opacity: 0.13;
+}
+
+.confirm-card[data-watermark-variant='quarantine']::after {
+  color: var(--quarantine);
 }
 
 .eyebrow {
   font-size: 11px;
   letter-spacing: 0.14em;
-  color: var(--quarantine);
+  color: var(--stamp-red);
   margin: 0 0 8px;
   position: relative;
 }
 
+.confirm-card[data-watermark-variant='quarantine'] .eyebrow {
+  color: var(--quarantine);
+}
+
 h2 {
-  font-size: 21px;
+  font-size: 20px;
   letter-spacing: 0.02em;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   position: relative;
   line-height: 1.4;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  background: rgba(33, 29, 24, 0.08);
+  padding: 2px 8px;
+  margin: 0 0 12px;
+  position: relative;
 }
 
 .body-text {
@@ -132,7 +148,7 @@ h2 {
   position: relative;
 }
 
-.destination-line {
+.destination {
   font-size: 12px;
   color: rgba(33, 29, 24, 0.55);
   margin: 0 0 14px;
@@ -154,6 +170,7 @@ h2 {
   display: flex;
   gap: 10px;
   position: relative;
+  margin-top: 6px;
 }
 
 .btn {

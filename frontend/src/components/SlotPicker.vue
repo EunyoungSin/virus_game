@@ -1,32 +1,39 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import ConfirmModal from './ConfirmModal.vue'
 import FlickeringLight from './FlickeringLight.vue'
-import type { SaveSlot } from '../types'
+import type { ConfirmModalConfig, SaveSlot } from '../types'
 
-const props = defineProps<{
-  slots: SaveSlot[]
-  mode: 'SAVE' | 'LOAD'
-  scope: 'GLOBAL' | 'CURRENT_GAME'
-  loadingSlotNo?: number | null
-}>()
-
-// 타이틀로 바로 나가는 링크는 게임 화면에서 "목록으로"를 눌러 뜬 CURRENT_GAME 선택 화면에서만
-// 보여준다. 타이틀에서 곧장 들어온 사건 이어하기(GLOBAL) 화면은 "취소하고 돌아가기" 자체가 이미
-// 타이틀로 돌아가는 동작이라 중복이다.
-const showTitleLink = computed(() => props.mode === 'LOAD' && props.scope === 'CURRENT_GAME')
+// entryContext는 LOAD 모드에서 하단 버튼 구성을 결정한다: 게임 내 "불러오기" 버튼으로
+// 들어왔다면 "취소하고 돌아가기"(원래 게임 화면으로) + "타이틀로 돌아가기" 둘 다,
+// 타이틀의 "사건 이어하기"로 들어왔다면 돌아갈 게임 화면 자체가 없으므로 "타이틀로
+// 돌아가기" 하나만 보여준다. SAVE 모드는 항상 게임 내에서만 열리므로 해당 없음.
+const props = withDefaults(
+  defineProps<{
+    slots: SaveSlot[]
+    mode: 'SAVE' | 'LOAD'
+    entryContext?: 'FROM_TITLE' | 'FROM_IN_GAME'
+    loadingSlotNo?: number | null
+  }>(),
+  {
+    entryContext: 'FROM_IN_GAME',
+  },
+)
 
 const emit = defineEmits<{
   select: [slotNo: number]
   deleteSlot: [slotNo: number]
   cancel: []
+  backToTitle: []
 }>()
 
 const reducedMotion =
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const impactSlotNo = ref<number | null>(null)
-const confirmingDeleteSlotNo = ref<number | null>(null)
-let deleteConfirmTimer: number | null = null
+// 삭제 버튼 클릭 시 config를 채워 ConfirmModal을 띄운다. "확인"을 눌러야만
+// emit('deleteSlot')이 나가고, "취소"나 ESC는 config.onCancel()로 모달만 닫는다.
+const deleteConfirm = ref<ConfirmModalConfig | null>(null)
 
 const copy = computed(() => {
   if (props.mode === 'SAVE') {
@@ -36,17 +43,10 @@ const copy = computed(() => {
       note: '이미 기록이 있는 슬롯을 고르면 덮어씁니다.',
     }
   }
-  if (props.scope === 'GLOBAL') {
-    return {
-      eyebrow: '사건 이어하기',
-      title: '이어서 진행할 사건을 선택하세요',
-      note: '선택한 시점 이후의 판정과 대화는 사라집니다.',
-    }
-  }
   return {
-    eyebrow: '기록 열람 — 슬롯 선택',
-    title: '되돌릴 시점을 선택하세요',
-    note: '선택한 슬롯 이후의 판정과 대화는 모두 사라집니다.',
+    eyebrow: '사건 이어하기',
+    title: '이어서 진행할 사건을 선택하세요',
+    note: '선택한 시점 이후의 판정과 대화는 사라집니다.',
   }
 })
 
@@ -72,29 +72,35 @@ async function onSlotClick(slot: SaveSlot) {
   emit('select', slot.slotNo)
 }
 
-function onDeleteClick(slotNo: number, event: MouseEvent) {
+function onDeleteClick(slot: SaveSlot, event: MouseEvent) {
   event.stopPropagation()
-  if (confirmingDeleteSlotNo.value !== slotNo) {
-    confirmingDeleteSlotNo.value = slotNo
-    if (deleteConfirmTimer !== null) {
-      window.clearTimeout(deleteConfirmTimer)
-    }
-    deleteConfirmTimer = window.setTimeout(() => {
-      confirmingDeleteSlotNo.value = null
-      deleteConfirmTimer = null
-    }, 3000)
+  if (slot.gameId == null || slot.day == null) {
     return
   }
-  if (deleteConfirmTimer !== null) {
-    window.clearTimeout(deleteConfirmTimer)
-    deleteConfirmTimer = null
+  deleteConfirm.value = {
+    eyebrow: '슬롯 삭제 승인 요청',
+    title: '이 슬롯을 삭제합니다',
+    tag: `SLOT ${slot.slotNo} · 사건 #${slot.gameId} (${slot.day}일차)`,
+    body: '삭제하시겠습니까?',
+    watermark: 'SLOT',
+    watermarkVariant: 'stampRed',
+    confirmLabel: '확인',
+    onConfirm: () => {
+      emit('deleteSlot', slot.slotNo)
+      deleteConfirm.value = null
+    },
+    onCancel: () => {
+      deleteConfirm.value = null
+    },
   }
-  confirmingDeleteSlotNo.value = null
-  emit('deleteSlot', slotNo)
 }
 
 function onCancel() {
   emit('cancel')
+}
+
+function onBackToTitle() {
+  emit('backToTitle')
 }
 </script>
 
@@ -147,11 +153,10 @@ function onCancel() {
               <button
                 v-if="slot.occupied"
                 class="slot-delete-btn"
-                :class="{ confirming: confirmingDeleteSlotNo === slot.slotNo }"
                 :aria-label="`슬롯 ${slot.slotNo} 삭제`"
-                @click="onDeleteClick(slot.slotNo, $event)"
+                @click="onDeleteClick(slot, $event)"
               >
-                {{ confirmingDeleteSlotNo === slot.slotNo ? '확인?' : '✕' }}
+                ✕
               </button>
             </div>
           </div>
@@ -159,13 +164,20 @@ function onCancel() {
       </ul>
 
       <div class="footer-actions">
-        <router-link v-if="showTitleLink" :to="{ name: 'title' }" class="btn-cancel label-stencil">
-          ← 타이틀로
-        </router-link>
-        <button class="btn-cancel label-stencil" @click="onCancel">취소하고 돌아가기</button>
+        <template v-if="mode === 'LOAD' && entryContext === 'FROM_TITLE'">
+          <button class="btn-cancel label-stencil" @click="onBackToTitle">타이틀로 돌아가기</button>
+        </template>
+        <template v-else-if="mode === 'LOAD' && entryContext === 'FROM_IN_GAME'">
+          <button class="btn-cancel label-stencil" @click="onCancel">취소하고 돌아가기</button>
+          <span class="footer-divider">·</span>
+          <button class="btn-cancel label-stencil" @click="onBackToTitle">타이틀로 돌아가기</button>
+        </template>
+        <button v-else class="btn-cancel label-stencil" @click="onCancel">취소하고 돌아가기</button>
       </div>
     </div>
     </div>
+
+    <ConfirmModal v-if="deleteConfirm" :config="deleteConfirm" />
   </div>
 </template>
 
@@ -353,12 +365,6 @@ h1 {
   outline-offset: 2px;
 }
 
-.slot-delete-btn.confirming {
-  background: var(--stamp-red);
-  color: var(--paper);
-  padding-right: 4px;
-}
-
 .slot-card.impact {
   animation: stamp-hit 0.28s ease;
 }
@@ -366,8 +372,13 @@ h1 {
 .footer-actions {
   margin-top: 22px;
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 1.25rem;
+  gap: 8px;
+}
+
+.footer-divider {
+  color: rgba(232, 222, 196, 0.3);
 }
 
 .btn-cancel {
