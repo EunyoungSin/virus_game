@@ -15,7 +15,7 @@ public class HeartbeatService {
     // (며칠 만에 다시 접속하는 정상적인 사용 패턴을 유휴 타임아웃 대상에서 제외하기 위함).
     private static final Duration HEARTBEAT_GAP_RESET = Duration.ofMinutes(2);
     // 실질 행동(대화/판정/검사키트/저장/불러오기) 없이 이 시간을 넘기면 유휴 타임아웃으로 강제 종료한다.
-    private static final Duration IDLE_TIMEOUT = Duration.ofMinutes(10);
+    private static final Duration IDLE_TIMEOUT = Duration.ofHours(1);
 
     private final GameRepository gameRepository;
     private final GameFinishService gameFinishService;
