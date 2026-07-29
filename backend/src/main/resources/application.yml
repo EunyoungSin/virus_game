@@ -44,8 +44,8 @@ gemini:
   fallback-model: ${GEMINI_FALLBACK_MODEL:gemini-flash-latest}
   max-retries: 3
   initial-backoff-ms: 500
-  # Gemini 3.x models spend part of maxOutputTokens on invisible "thinking" tokens before
-  # the visible answer; too low a budget here truncates the answer (finishReason=MAX_TOKENS).
+  # Gemini 3.x 모델은 maxOutputTokens 중 일부를 보이지 않는 "thinking" 토큰에 먼저 소모한 뒤
+  # 실제 답변을 생성한다 — 여기 값을 너무 낮게 잡으면 답변이 잘린다(finishReason=MAX_TOKENS).
   # thinkingConfig.thinkingBudget으로 이를 끄려는 시도는 실제 API가 400으로 거부해 불가능함을
   # 확인했다(두 모델 다 동일) — 쓰지 말 것.
   max-output-tokens: 1024
