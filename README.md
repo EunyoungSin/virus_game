@@ -49,7 +49,7 @@ BAD 엔딩은 `ending_reason`(`games`/`game_results` 컬럼) 하나로 세 갈�
 분기합니다.
 
 유휴 타임아웃(`ending_reason=IDLE_TIMEOUT`): 게임 화면을 열어둔 채 **실질 행동**(대화/판정/
-검사키트/저장/불러오기) 없이 10분이 지나면 자동으로 BAD 엔딩 처리됩니다("근무 수칙 1항 — 자리를
+검사키트/저장/불러오기) 없이 1시간이 지나면 자동으로 BAD 엔딩 처리됩니다("근무 수칙 1항 — 자리를
 오래 비우지 말 것"의 서사적 페이백). 판정 기준은 달력 시간이 아니라 **게임 화면이 실제로 마운트돼
 있던 시간**입니다 — 프론트가 `GamePlayView`가 마운트되어 있는 동안에는 탭이 백그라운드에 있어도
 30초 간격으로 `POST /api/games/{gameId}/heartbeat`를 호출합니다(`document.visibilityState`는
@@ -59,7 +59,7 @@ BAD 엔딩은 `ending_reason`(`games`/`game_results` 컬럼) 하나로 세 갈�
 있지만, 서버는 간격이 아니라 `last_action_at` 기준 누적 시간으로 판단하므로 문제되지 않습니다.
 서버 로직(`HeartbeatService`): 하트비트 간격이 2분을 초과했다 재개되면 "방금 복귀"로 간주해
 유휴 시계를 리셋하고(며칠 만에 다시 접속하는 정상적인 사용 패턴을 배제하기 위함), 그렇지 않고
-마지막 실질 행동 이후 10분을
+마지막 실질 행동 이후 1시간을
 초과했다면 그 시점에 즉시 `FINISHED`/`BAD`/`IDLE_TIMEOUT`으로 강제 종료합니다. **명시적으로
 일시정지(PAUSED)한 게임은 대상에서 제외**됩니다(자리를 비울 때 일시정지를 누르도록 자연스럽게
 유도). `conversations`/`test-kit`/`decision`/`save`/`load` 등 실질 행동 API는 호출 시 모두
@@ -243,8 +243,11 @@ curl localhost:8080/api/users/<userId>/endings -H "Authorization: Bearer <token>
 
 Conversation API를 쓰려면 `GEMINI_API_KEY` 환경변수(Google AI Studio에서 발급)가 필요합니다.
 `local` 프로필에는 안전상 기본 키를 넣어두지 않았으므로, 키 없이 호출하면 502가 반환됩니다.
-`gemini.model`/`gemini.fallback-model` 기본값은 `gemini-flash-latest`/`gemini-flash-lite-latest`
-(버전 고정 이름 대신 별칭을 사용해 모델 폐기에 덜 취약하도록 함)이고,
+`gemini.model`/`gemini.fallback-model` 기본값은 `gemini-flash-lite-latest`/`gemini-flash-latest`
+(버전 고정 이름 대신 별칭을 사용해 모델 폐기에 덜 취약하도록 함)입니다. flash-lite를 기본으로
+승격한 이유는 실측상 flash-latest 대비 응답이 약 3배 빠르고(~1s vs 2.7s+), 연속 호출 시
+flash-latest 쪽에서 429/503이 더 쉽게 발생해 재시도 백오프까지 겹치면 체감 지연이 커지기
+때문입니다 — flash-latest는 fallback으로만 남겨둡니다.
 Gemini 3.x 계열은 `maxOutputTokens` 예산 일부를 보이지 않는 "thinking" 토큰이 먼저 소모하므로
 `gemini.max-output-tokens`를 200~300이 아닌 1024로 넉넉히 잡아야 답변이 중간에 끊기지 않습니다.
 `GeminiDialogueClient`는 연결 5초/응답 30초 타임아웃을 명시적으로 둡니다 — 원래는 타임아웃이
@@ -298,7 +301,7 @@ FROM_IN_GAME)에서는 이 뱃지가 계속 표시됩니다. 엔딩 기록 보�
 버튼 구성은 `entry-context`로 갈립니다: SAVE는 "취소하고 돌아가기" 하나, LOAD·FROM_IN_GAME은
 "취소하고 돌아가기"(원래 게임 화면으로)와 "타이틀로 돌아가기" 둘 다.
 
-"← 목록으로" 버튼은 확인이나 API 호출 없이 곧장 타이틀로 이동합니다 — 라이브 게임 상태
+"← 타이틀" 버튼은 확인이나 API 호출 없이 곧장 타이틀로 이동합니다 — 라이브 게임 상태
 (games/visitors/conversations)는 그대로 둔 채 화면만 바뀌므로, 이후 "사건 이어하기"나 플레이
 화면의 "불러오기"로 다시 들어오면 이어서 진행할 수 있습니다. 저장 여부를 묻지 않는 이유는
 저장이 오직 "저장" 버튼을 통한 명시적 스냅샷으로만 이뤄지기 때문입니다.
